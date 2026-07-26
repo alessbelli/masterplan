@@ -1,0 +1,25 @@
+{
+  // Cloudflare Workers config for masterplan. Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "masterplan",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./public"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "masterplan",
+      // Placeholder. A human provisions the real DB with `wrangler d1 create masterplan`
+      // and pastes the returned id here (see docs/planning/status.md). Local dev and
+      // Vitest use a local D1 and do not need a real id.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

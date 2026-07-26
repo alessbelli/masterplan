@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+*.local
+
+# Generated Worker types
+worker-configuration.d.ts
+
+# Playwright
+test-results/
+playwright-report/
+e2e/traces/tmp/
+
+# OS / editor
+.DS_Store
+*.log

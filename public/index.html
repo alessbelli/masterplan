@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>masterplan</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      h1 { margin-bottom: 0.25rem; }
+      form { display: flex; gap: 0.5rem; margin: 1.5rem 0; }
+      input { flex: 1; padding: 0.5rem; font-size: 1rem; }
+      button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+      ul { list-style: none; padding: 0; }
+      li { padding: 0.5rem 0; border-bottom: 1px solid #8883; }
+      time { color: #8888; font-size: 0.8rem; margin-left: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>masterplan</h1>
+    <p>A tiny app on Cloudflare Workers + D1.</p>
+
+    <form id="note-form">
+      <input id="note-body" name="body" placeholder="Add a note…" autocomplete="off" required />
+      <button type="submit">Add</button>
+    </form>
+
+    <ul id="notes" aria-live="polite"></ul>
+
+    <script>
+      const list = document.getElementById("notes");
+      const form = document.getElementById("note-form");
+      const input = document.getElementById("note-body");
+
+      // Client-error beacon (guidance/10): surface client failures in server logs.
+      window.addEventListener("error", (e) => {
+        navigator.sendBeacon?.("/client-error", JSON.stringify({ message: e.message }));
+      });
+
+      function render(notes) {
+        list.innerHTML = "";
+        for (const n of notes) {
+          const li = document.createElement("li");
+          li.textContent = n.body;
+          const t = document.createElement("time");
+          t.textContent = n.created_at;
+          li.appendChild(t);
+          list.appendChild(li);
+        }
+      }
+
+      async function load() {
+        const res = await fetch("/api/notes");
+        const { notes } = await res.json();
+        render(notes);
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const body = input.value.trim();
+        if (!body) return;
+        await fetch("/api/notes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ body }),
+        });
+        input.value = "";
+        await load();
+      });
+
+      load();
+    </script>
+  </body>
+</html>
