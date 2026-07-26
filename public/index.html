@@ -5,76 +5,208 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>masterplan</title>
     <style>
-      :root { color-scheme: light dark; }
-      body {
-        font-family: system-ui, sans-serif;
-        max-width: 40rem;
-        margin: 3rem auto;
-        padding: 0 1rem;
-        line-height: 1.5;
-      }
-      h1 { margin-bottom: 0.25rem; }
-      form { display: flex; gap: 0.5rem; margin: 1.5rem 0; }
-      input { flex: 1; padding: 0.5rem; font-size: 1rem; }
-      button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-      ul { list-style: none; padding: 0; }
-      li { padding: 0.5rem 0; border-bottom: 1px solid #8883; }
-      time { color: #8888; font-size: 0.8rem; margin-left: 0.5rem; }
+      :root { color-scheme: light dark; --line: #8884; --accent: #2f7; --ok: #1a8; --bad: #d44; }
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, sans-serif; margin: 0; line-height: 1.5; }
+      header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: Canvas; }
+      header h1 { font-size: 1.1rem; margin: 0; }
+      main { max-width: 60rem; margin: 0 auto; padding: 1rem; display: grid; gap: 1.25rem; }
+      section { border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+      h2 { margin: 0 0 .75rem; font-size: 1rem; }
+      label { font-size: .85rem; }
+      input, select, button { font: inherit; padding: .35rem .5rem; }
+      input[type=number] { width: 6rem; }
+      button { cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: ButtonFace; }
+      button.primary { background: var(--ok); color: white; border-color: transparent; }
+      table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+      th, td { text-align: left; padding: .3rem .4rem; border-bottom: 1px solid var(--line); }
+      td.num, th.num { text-align: right; }
+      .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+      .muted { color: #8889; font-size: .85rem; }
+      .results { max-height: 14rem; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: .5rem; }
+      .results div { display: flex; justify-content: space-between; gap: .5rem; padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
+      .pill { padding: .1rem .5rem; border-radius: 999px; font-size: .8rem; }
+      .ok { color: var(--ok); } .bad { color: var(--bad); font-weight: 600; }
+      .totals td { font-weight: 600; }
+      #status { font-size: .85rem; }
     </style>
   </head>
   <body>
-    <h1>masterplan</h1>
-    <p>A tiny app on Cloudflare Workers + D1.</p>
+    <header>
+      <h1>masterplan</h1>
+      <span class="muted">meal planner · macros · shopping</span>
+      <span id="status" class="muted" style="margin-left:auto"></span>
+      <button id="reset">Reset</button>
+    </header>
+    <main>
+      <section id="targets-sec">
+        <h2>Daily macro targets</h2>
+        <div class="row">
+          <label>Calories <input id="t-kcal" type="number" value="2700" /></label>
+          <label>Protein (g) <input id="t-protein" type="number" value="168" /></label>
+          <label>Fat (g) <input id="t-fat" type="number" value="66" /></label>
+          <label>Carbs (g) <input id="t-carb" type="number" value="358.5" /></label>
+          <button id="save-targets" class="primary">Save targets</button>
+        </div>
+        <p class="muted">Applied to every day. (The full body-stats calculator is a post-PoC feature.)</p>
+      </section>
 
-    <form id="note-form">
-      <input id="note-body" name="body" placeholder="Add a note…" autocomplete="off" required />
-      <button type="submit">Add</button>
-    </form>
+      <section>
+        <h2>Day</h2>
+        <div class="row">
+          <label>Weekday
+            <select id="weekday"></select>
+          </label>
+          <input id="recipe-q" placeholder="search recipes…" />
+          <input id="food-q" placeholder="search foods to add…" />
+          <button id="build">Build day from plan</button>
+          <button id="optimize" class="primary">Optimize grams</button>
+        </div>
+        <div id="search-results"></div>
+        <p id="opt-msg"></p>
+        <table id="day">
+          <thead>
+            <tr><th>Meal</th><th>Food</th><th class="num">kcal</th><th class="num">P</th><th class="num">F</th><th class="num">C</th><th class="num">min–max</th><th class="num">grams</th></tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </section>
 
-    <ul id="notes" aria-live="polite"></ul>
+      <section>
+        <h2>Shopping list <button id="refresh-shop" style="float:right">Refresh</button></h2>
+        <div id="shopping"></div>
+      </section>
+    </main>
 
     <script>
-      const list = document.getElementById("notes");
-      const form = document.getElementById("note-form");
-      const input = document.getElementById("note-body");
+      const $ = (s) => document.querySelector(s);
+      const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+      let weekday = 0;
+      const api = async (path, method = "GET", body) => {
+        const res = await fetch(path, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.status); }
+        return res.json();
+      };
+      const setStatus = (m) => { $("#status").textContent = m; };
 
-      // Client-error beacon (guidance/10): surface client failures in server logs.
-      window.addEventListener("error", (e) => {
-        navigator.sendBeacon?.("/client-error", JSON.stringify({ message: e.message }));
-      });
+      // weekday selector
+      DAYS.forEach((d, i) => { const o = document.createElement("option"); o.value = i; o.textContent = d; $("#weekday").appendChild(o); });
+      $("#weekday").addEventListener("change", (e) => { weekday = +e.target.value; loadDay(); });
 
-      function render(notes) {
-        list.innerHTML = "";
-        for (const n of notes) {
-          const li = document.createElement("li");
-          li.textContent = n.body;
-          const t = document.createElement("time");
-          t.textContent = n.created_at;
-          li.appendChild(t);
-          list.appendChild(li);
-        }
-      }
-
-      async function load() {
-        const res = await fetch("/api/notes");
-        const { notes } = await res.json();
-        render(notes);
-      }
-
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const body = input.value.trim();
-        if (!body) return;
-        await fetch("/api/notes", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ body }),
+      $("#save-targets").addEventListener("click", async () => {
+        await api("/api/targets", "PUT", {
+          kcal: +$("#t-kcal").value, protein_g: +$("#t-protein").value, fat_g: +$("#t-fat").value, carb_g: +$("#t-carb").value,
         });
-        input.value = "";
-        await load();
+        setStatus("targets saved");
+        loadDay();
       });
 
-      load();
+      // recipe search → add to plan then rebuild-friendly
+      $("#recipe-q").addEventListener("input", debounce(async (e) => {
+        const q = e.target.value.trim();
+        if (!q) return renderResults([]);
+        const { recipes } = await api("/api/recipes?query=" + encodeURIComponent(q) + "&limit=15");
+        renderResults(recipes.map((r) => ({ label: r.caption + ` · ${r.ingredient_count} ing`, action: async () => {
+          const slot = await nextSlot(); await api("/api/plan", "PUT", { weekday, slot, recipe_id: r.id }); setStatus(`added "${r.caption}" to ${DAYS[weekday]}`); renderResults([]); $("#recipe-q").value = "";
+        }})));
+      }));
+
+      $("#food-q").addEventListener("input", debounce(async (e) => {
+        const q = e.target.value.trim();
+        if (!q) return renderResults([]);
+        const { foods } = await api("/api/foods?query=" + encodeURIComponent(q) + "&limit=15");
+        renderResults(foods.map((f) => ({ label: f.caption + ` · ${f.kcal_100g}kcal/100g`, action: async () => {
+          await api(`/api/days/${weekday}/add-food`, "POST", { food_id: f.id, grams: 100 }); setStatus(`added "${f.caption}"`); renderResults([]); $("#food-q").value = ""; loadDay();
+        }})));
+      }));
+
+      function renderResults(items) {
+        const box = $("#search-results");
+        if (!items.length) { box.innerHTML = ""; return; }
+        box.innerHTML = '<div class="results"></div>';
+        const list = box.firstChild;
+        items.forEach((it) => {
+          const row = document.createElement("div");
+          const span = document.createElement("span"); span.textContent = it.label;
+          const b = document.createElement("button"); b.textContent = "Add"; b.onclick = it.action;
+          row.append(span, b); list.appendChild(row);
+        });
+      }
+
+      async function nextSlot() {
+        const { plan } = await api("/api/plan");
+        const slots = plan.filter((p) => p.weekday === weekday).map((p) => p.slot);
+        return slots.length ? Math.max(...slots) + 1 : 0;
+      }
+
+      $("#build").addEventListener("click", async () => { const r = await api(`/api/days/${weekday}/build`, "POST"); setStatus(`built ${DAYS[weekday]}: ${r.items} ingredients`); loadDay(); });
+
+      $("#optimize").addEventListener("click", async () => {
+        try {
+          const r = await api(`/api/days/${weekday}/optimize`, "POST");
+          if (r.status === "optimal") { $("#opt-msg").innerHTML = '<span class="ok">✓ Optimized — your calories, protein and fat are within ±5% of target.</span>'; }
+          else {
+            const NAMES = { kcal: "Calories", protein: "Protein", fat: "Fat" };
+            const red = r.unmet.map((u) => `${NAMES[u.macro] || u.macro} (${u.direction === "too_low" ? "can't reach it" : "unavoidably too high"})`).join(", ");
+            const detail = red
+              ? `these can't be met with the current foods and gram limits: <strong>${red}</strong>.`
+              : "no single combination of these foods hits calories, protein and fat all at once.";
+            $("#opt-msg").innerHTML = `<span class="bad">Couldn't hit your targets within ±5% — ${detail}</span>` +
+              `<br><span class="muted">Try adding more varied foods to the day, or widen a food's min–max gram range.</span>`;
+          }
+          loadDay();
+        } catch (e) { $("#opt-msg").innerHTML = `<span class="bad">${e.message}</span>`; }
+      });
+
+      async function loadDay() {
+        const { items, totals, target } = await api(`/api/days/${weekday}`);
+        const tb = $("#day tbody"); tb.innerHTML = "";
+        items.forEach((it) => {
+          const tr = document.createElement("tr");
+          const m = (v) => (Math.round(v * 10) / 10).toString();
+          const f = it.grams / 100 / (it.servings || 1);
+          tr.innerHTML = `<td>${esc(it.meal_label)}</td><td>${esc(it.caption)}</td>
+            <td class="num">${m(it.kcal_100g*f)}</td><td class="num">${m(it.protein_100g*f)}</td>
+            <td class="num">${m(it.fat_100g*f)}</td><td class="num">${m(it.carb_100g*f)}</td>
+            <td class="num muted">${it.min_g}–${it.max_g}</td><td class="num"></td>`;
+          const g = document.createElement("input"); g.type = "number"; g.value = it.grams; g.min = 0;
+          g.addEventListener("change", async () => { await api(`/api/day-items/${it.id}`, "PATCH", { grams: +g.value }); loadDay(); });
+          tr.lastElementChild.appendChild(g);
+          tb.appendChild(tr);
+        });
+        renderTotals(totals, target);
+      }
+
+      function renderTotals(totals, target) {
+        const tf = $("#day tfoot"); tf.innerHTML = "";
+        if (!target) { tf.innerHTML = `<tr class="totals"><td colspan="8" class="muted">Set targets to see how close you are.</td></tr>`; }
+        const cell = (val, tgt) => {
+          const ratio = tgt ? val / tgt : 0;
+          const cls = tgt && Math.abs(ratio - 1) > 0.05 ? "bad" : "ok";
+          return `<td class="num ${tgt ? cls : ""}">${Math.round(val)}${tgt ? ` / ${Math.round(tgt)}` : ""}</td>`;
+        };
+        const tr = document.createElement("tr"); tr.className = "totals";
+        tr.innerHTML = `<td colspan="2">Day total ${target ? "vs target" : ""}</td>${cell(totals.kcal, target?.kcal)}${cell(totals.protein_g, target?.protein_g)}${cell(totals.fat_g, target?.fat_g)}${cell(totals.carb_g, target?.carb_g)}<td colspan="2"></td>`;
+        tf.appendChild(tr);
+      }
+
+      $("#refresh-shop").addEventListener("click", loadShopping);
+      async function loadShopping() {
+        const { groups } = await api("/api/shopping");
+        const box = $("#shopping");
+        if (!groups.length) { box.innerHTML = '<p class="muted">Nothing yet — build a day or add foods.</p>'; return; }
+        box.innerHTML = groups.map((g) => `<h3 style="margin:.5rem 0 .2rem;font-size:.9rem">${esc(g.category_label)}</h3>` +
+          '<table><tbody>' + g.lines.map((l) => `<tr><td>${esc(l.caption)}</td><td class="num">${esc(l.quantity)}</td></tr>`).join("") + "</tbody></table>").join("");
+      }
+
+      $("#reset").addEventListener("click", async () => { await api("/api/reset", "POST"); setStatus("workspace reset"); loadDay(); loadShopping(); });
+
+      function debounce(fn, ms = 200) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+      function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+      // boot
+      (async () => { try { await api("/api/i18n"); } catch {} loadDay(); loadShopping(); })();
     </script>
   </body>
 </html>

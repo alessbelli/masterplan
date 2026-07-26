@@ -15,10 +15,9 @@
     {
       "binding": "DB",
       "database_name": "masterplan",
-      // Placeholder. A human provisions the real DB with `wrangler d1 create masterplan`
-      // and pastes the returned id here (see docs/planning/status.md). Local dev and
-      // Vitest use a local D1 and do not need a real id.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Provisioned via `wrangler d1 create masterplan`. The id is an identifier,
+      // not a secret. Local dev and Vitest use a local D1 regardless.
+      "database_id": "a068f049-4384-4869-94ea-6d965ff8a583",
       "migrations_dir": "migrations"
     }
   ]
