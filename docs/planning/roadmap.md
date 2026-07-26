@@ -16,9 +16,16 @@ review.**
 Human creates the D1 database and Cloudflare Worker; paste the `database_id`
 into `wrangler.jsonc`; first `wrangler deploy` (confirmed per `guidance/09`).
 
-### Phase 2 — The actual product
-Replace the placeholder notes slice with the real feature set. Keep the same
-loops (Vitest + local D1 for the inner loop, one Playwright trace per slice).
+### Phase 2 — The actual product: a macro-based meal planner
+Rebuild the `MasterPlan3.1.xlsm` workbook as a tiny web app — food + recipe
+databases, a macro calculator, weekly planning, a per-day macro **optimizer**
+(LP, replacing Excel Solver), a shopping-list rollup, and weight progression.
+See `spec.md` (what it does + how the workbook implements it) and
+`build-plan.md` (Workers + D1 architecture, schema/migrations, fixtures, the
+feature-by-feature port, gaps, and open decisions). PoC scope: no signup,
+anonymous per-workspace data, every feature tested with fixtures lifted from the
+spreadsheet. Keep the same loops (Vitest + local D1 inner loop, one Playwright
+trace per slice).
 
 ## Guardrails (from product-builder)
 - Never commit to `main`; branch → CI → human review → merge.
