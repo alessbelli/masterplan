@@ -145,10 +145,15 @@
       $("#optimize").addEventListener("click", async () => {
         try {
           const r = await api(`/api/days/${weekday}/optimize`, "POST");
-          if (r.status === "optimal") { $("#opt-msg").innerHTML = '<span class="ok">✓ Optimized — macros within tolerance.</span>'; }
+          if (r.status === "optimal") { $("#opt-msg").innerHTML = '<span class="ok">✓ Optimized — your calories, protein and fat are within ±5% of target.</span>'; }
           else {
-            const red = r.unmet.map((u) => `${u.macro} ${u.direction === "too_low" ? "too low" : "too high"}`).join(", ");
-            $("#opt-msg").innerHTML = `<span class="bad">No solution within tolerance. Off: ${red || "targets unreachable with these foods/bounds"}.</span>`;
+            const NAMES = { kcal: "Calories", protein: "Protein", fat: "Fat" };
+            const red = r.unmet.map((u) => `${NAMES[u.macro] || u.macro} (${u.direction === "too_low" ? "can't reach it" : "unavoidably too high"})`).join(", ");
+            const detail = red
+              ? `these can't be met with the current foods and gram limits: <strong>${red}</strong>.`
+              : "no single combination of these foods hits calories, protein and fat all at once.";
+            $("#opt-msg").innerHTML = `<span class="bad">Couldn't hit your targets within ±5% — ${detail}</span>` +
+              `<br><span class="muted">Try adding more varied foods to the day, or widen a food's min–max gram range.</span>`;
           }
           loadDay();
         } catch (e) { $("#opt-msg").innerHTML = `<span class="bad">${e.message}</span>`; }
