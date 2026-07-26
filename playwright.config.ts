@@ -18,8 +18,8 @@ export default defineConfig({
       : {},
   },
   webServer: {
-    // Apply migrations to the local D1, then boot the Worker.
-    command: `pnpm db:migrate:local && wrangler dev --port ${PORT}`,
+    // Migrate + seed the local D1, then boot the Worker.
+    command: `pnpm db:setup:local && wrangler dev --port ${PORT}`,
     url: `http://127.0.0.1:${PORT}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

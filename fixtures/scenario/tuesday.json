@@ -1,0 +1,436 @@
+{
+ "targets": {
+  "kcal": 2700,
+  "protein_g": 168,
+  "fat_g": 66,
+  "carb_g": 358.5
+ },
+ "expected_totals": {
+  "kcal": 2718.233,
+  "protein_g": 173.0595,
+  "fat_g": 66.735,
+  "carb_g": 349.019
+ },
+ "items": [
+  {
+   "meal": "Skyr Cruesli",
+   "food": "Banane",
+   "servings": 1.0,
+   "min_g": 0,
+   "max_g": 100,
+   "grams": 100,
+   "sheet": {
+    "kcal": 90,
+    "protein_g": 0.98,
+    "fat_g": 0.25,
+    "carb_g": 19.6
+   }
+  },
+  {
+   "meal": "Skyr Cruesli",
+   "food": "Muesli VIGNON Protéiné",
+   "servings": 1.0,
+   "min_g": 50,
+   "max_g": 100,
+   "grams": 82,
+   "sheet": {
+    "kcal": 348.5,
+    "protein_g": 15.58,
+    "fat_g": 9.02,
+    "carb_g": 47.56
+   }
+  },
+  {
+   "meal": "Skyr Cruesli",
+   "food": "Miel Tartimiel",
+   "servings": 1.0,
+   "min_g": 0,
+   "max_g": 10,
+   "grams": 10,
+   "sheet": {
+    "kcal": 32,
+    "protein_g": 0,
+    "fat_g": 0,
+    "carb_g": 8
+   }
+  },
+  {
+   "meal": "Skyr Cruesli",
+   "food": "Stevia Pure Via",
+   "servings": 1.0,
+   "min_g": 0,
+   "max_g": 15,
+   "grams": 0,
+   "sheet": {
+    "kcal": 0,
+    "protein_g": 0,
+    "fat_g": 0,
+    "carb_g": 0
+   }
+  },
+  {
+   "meal": "Skyr Cruesli",
+   "food": "Yaourt Skyr Light and Free",
+   "servings": 1.0,
+   "min_g": 240,
+   "max_g": 400,
+   "grams": 240,
+   "sheet": {
+    "kcal": 134.4,
+    "protein_g": 24.72,
+    "fat_g": 0.24,
+    "carb_g": 8.16
+   }
+  },
+  {
+   "meal": "Miscellaneous",
+   "food": "Joyfuel Bar",
+   "servings": 1.0,
+   "min_g": 55,
+   "max_g": 55,
+   "grams": 55,
+   "sheet": {
+    "kcal": 210.1,
+    "protein_g": 19.8,
+    "fat_g": 9.35,
+    "carb_g": 16.5
+   }
+  },
+  {
+   "meal": "Collations",
+   "food": "Andros Pomme Châtaigne",
+   "servings": 1.0,
+   "min_g": 100,
+   "max_g": 100,
+   "grams": 100,
+   "sheet": {
+    "kcal": 132,
+    "protein_g": 0.5,
+    "fat_g": 0.3,
+    "carb_g": 31
+   }
+  },
+  {
+   "meal": "Collations",
+   "food": "Banane",
+   "servings": 1.0,
+   "min_g": 120,
+   "max_g": 120,
+   "grams": 120,
+   "sheet": {
+    "kcal": 108,
+    "protein_g": 1.176,
+    "fat_g": 0.3,
+    "carb_g": 23.52
+   }
+  },
+  {
+   "meal": "Collations",
+   "food": "Chocolat Noir Pointe de Sel",
+   "servings": 1.0,
+   "min_g": 9,
+   "max_g": 9,
+   "grams": 9,
+   "sheet": {
+    "kcal": 49.68,
+    "protein_g": 0.666,
+    "fat_g": 3.33,
+    "carb_g": 3.96
+   }
+  },
+  {
+   "meal": "Collations",
+   "food": "Yaourt Skyr Light and Free",
+   "servings": 1.0,
+   "min_g": 240,
+   "max_g": 400,
+   "grams": 240,
+   "sheet": {
+    "kcal": 134.4,
+    "protein_g": 24.72,
+    "fat_g": 0.24,
+    "carb_g": 8.16
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Ail",
+   "servings": 5.0,
+   "min_g": 15,
+   "max_g": 15,
+   "grams": 15,
+   "sheet": {
+    "kcal": 3.333,
+    "protein_g": 0.1743,
+    "fat_g": 0.0102,
+    "carb_g": 0.636
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Boulgour",
+   "servings": 5.0,
+   "min_g": 200,
+   "max_g": 700,
+   "grams": 700,
+   "sheet": {
+    "kcal": 463.82,
+    "protein_g": 15.4,
+    "fat_g": 2.38,
+    "carb_g": 95.2
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Concombre",
+   "servings": 5.0,
+   "min_g": 300,
+   "max_g": 300,
+   "grams": 300,
+   "sheet": {
+    "kcal": 6.84,
+    "protein_g": 0.348,
+    "fat_g": 0.114,
+    "carb_g": 0.9
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Echalote",
+   "servings": 5.0,
+   "min_g": 90,
+   "max_g": 150,
+   "grams": 150,
+   "sheet": {
+    "kcal": 17.61,
+    "protein_g": 0.552,
+    "fat_g": 0.429,
+    "carb_g": 2.505
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Huile d'olive",
+   "servings": 5.0,
+   "min_g": 15,
+   "max_g": 90,
+   "grams": 90,
+   "sheet": {
+    "kcal": 162,
+    "protein_g": 0,
+    "fat_g": 18,
+    "carb_g": 0
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Kubor",
+   "servings": 5.0,
+   "min_g": 15,
+   "max_g": 15,
+   "grams": 15,
+   "sheet": {
+    "kcal": 5.52,
+    "protein_g": 0.147,
+    "fat_g": 0.27,
+    "carb_g": 0.6
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Moutarde Maille",
+   "servings": 5.0,
+   "min_g": 15,
+   "max_g": 30,
+   "grams": 15,
+   "sheet": {
+    "kcal": 4.5,
+    "protein_g": 0.21,
+    "fat_g": 0.33,
+    "carb_g": 0.105
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Pastrami Fleury Michon",
+   "servings": 5.0,
+   "min_g": 500,
+   "max_g": 500,
+   "grams": 500,
+   "sheet": {
+    "kcal": 118,
+    "protein_g": 21,
+    "fat_g": 3.4,
+    "carb_g": 0.8
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Persil",
+   "servings": 5.0,
+   "min_g": 15,
+   "max_g": 15,
+   "grams": 15,
+   "sheet": {
+    "kcal": 1.08,
+    "protein_g": 0.09,
+    "fat_g": 0.024,
+    "carb_g": 0.18
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Tomate Cerise",
+   "servings": 5.0,
+   "min_g": 250,
+   "max_g": 250,
+   "grams": 250,
+   "sheet": {
+    "kcal": 10.7,
+    "protein_g": 0.4,
+    "fat_g": 0.2,
+    "carb_g": 1.5
+   }
+  },
+  {
+   "meal": "Salade tomate, courgette et boulgour",
+   "food": "Vinaigre de Cidre",
+   "servings": 5.0,
+   "min_g": 50,
+   "max_g": 50,
+   "grams": 50,
+   "sheet": {
+    "kcal": 0,
+    "protein_g": 0,
+    "fat_g": 0,
+    "carb_g": 0.093
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Ail",
+   "servings": 5.0,
+   "min_g": 10,
+   "max_g": 10,
+   "grams": 10,
+   "sheet": {
+    "kcal": 2.222,
+    "protein_g": 0.1162,
+    "fat_g": 0.0068,
+    "carb_g": 0.424
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Fusilli Barilla",
+   "servings": 5.0,
+   "min_g": 300,
+   "max_g": 500,
+   "grams": 500,
+   "sheet": {
+    "kcal": 359,
+    "protein_g": 12.5,
+    "fat_g": 2,
+    "carb_g": 71.2
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Huile d'olive",
+   "servings": 5.0,
+   "min_g": 10,
+   "max_g": 20,
+   "grams": 20,
+   "sheet": {
+    "kcal": 36,
+    "protein_g": 0,
+    "fat_g": 4,
+    "carb_g": 0
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Mozzarella Rapée",
+   "servings": 5.0,
+   "min_g": 50,
+   "max_g": 100,
+   "grams": 50,
+   "sheet": {
+    "kcal": 31.2,
+    "protein_g": 2.5,
+    "fat_g": 2.2,
+    "carb_g": 0.27
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Oignons",
+   "servings": 5.0,
+   "min_g": 240,
+   "max_g": 240,
+   "grams": 240,
+   "sheet": {
+    "kcal": 16.608,
+    "protein_g": 0.624,
+    "fat_g": 0.096,
+    "carb_g": 2.976
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Philadelphia Light",
+   "servings": 5.0,
+   "min_g": 150,
+   "max_g": 150,
+   "grams": 150,
+   "sheet": {
+    "kcal": 44.1,
+    "protein_g": 2.22,
+    "fat_g": 3.3,
+    "carb_g": 1.56
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Poivron Rouge",
+   "servings": 5.0,
+   "min_g": 150,
+   "max_g": 150,
+   "grams": 150,
+   "sheet": {
+    "kcal": 8.82,
+    "protein_g": 0.336,
+    "fat_g": 0.105,
+    "carb_g": 1.35
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Steak Haché 5% M.G.",
+   "servings": 5.0,
+   "min_g": 700,
+   "max_g": 700,
+   "grams": 700,
+   "sheet": {
+    "kcal": 169.4,
+    "protein_g": 27.44,
+    "fat_g": 6.58,
+    "carb_g": 0
+   }
+  },
+  {
+   "meal": "One Pan Protein Pasta",
+   "food": "Tomate",
+   "servings": 5.0,
+   "min_g": 500,
+   "max_g": 500,
+   "grams": 500,
+   "sheet": {
+    "kcal": 18.4,
+    "protein_g": 0.86,
+    "fat_g": 0.26,
+    "carb_g": 2.26
+   }
+  }
+ ]
+}
