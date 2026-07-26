@@ -13,12 +13,24 @@ type Vars = { ws: string; locale: string };
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
-// Resolve a food/recipe caption in SQL: preferred locale → source locale → any.
-const foodCaption = (a: string) =>
+// Caption resolution via indexed JOINs (preferred locale → source locale).
+// Seeded/created rows always have a source-locale caption, so COALESCE lands.
+// (Correlated subqueries scan too much and hit D1's rows-read limit at scale.)
+const foodCapJoin = (a: string) =>
+  `LEFT JOIN food_caption ${a}_cp ON ${a}_cp.food_id=${a}.id AND ${a}_cp.locale=?1 ` +
+  `LEFT JOIN food_caption ${a}_cs ON ${a}_cs.food_id=${a}.id AND ${a}_cs.locale=${a}.source_locale`;
+const foodCapSel = (a: string) => `COALESCE(${a}_cp.caption, ${a}_cs.caption, '')`;
+const recipeCapJoin = (a: string) =>
+  `LEFT JOIN recipe_caption ${a}_rp ON ${a}_rp.recipe_id=${a}.id AND ${a}_rp.locale=?1 ` +
+  `LEFT JOIN recipe_caption ${a}_rs ON ${a}_rs.recipe_id=${a}.id AND ${a}_rs.locale=${a}.source_locale`;
+const recipeCapSel = (a: string) => `COALESCE(${a}_rp.caption, ${a}_rs.caption, '')`;
+
+// Single-row (by id) lookups: a small correlated subquery is fine here.
+const foodCaptionOne = (a: string) =>
   `COALESCE((SELECT caption FROM food_caption WHERE food_id=${a}.id AND locale=?1),` +
   `(SELECT caption FROM food_caption WHERE food_id=${a}.id AND locale=${a}.source_locale),` +
   `(SELECT caption FROM food_caption WHERE food_id=${a}.id LIMIT 1))`;
-const recipeCaption = (a: string) =>
+const recipeCaptionOne = (a: string) =>
   `COALESCE((SELECT caption FROM recipe_caption WHERE recipe_id=${a}.id AND locale=?1),` +
   `(SELECT caption FROM recipe_caption WHERE recipe_id=${a}.id AND locale=${a}.source_locale),` +
   `(SELECT caption FROM recipe_caption WHERE recipe_id=${a}.id LIMIT 1))`;
@@ -90,8 +102,8 @@ app.get("/api/foods", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT f.id, f.scope, f.base_food_id, f.kcal_100g, f.protein_100g, f.fat_100g, f.carb_100g,
             fc.key AS category_key, fc.label AS category_label, fc.sort_order AS category_sort,
-            ${foodCaption("f")} AS caption
-     FROM food f LEFT JOIN food_category fc ON fc.id=f.category_id
+            ${foodCapSel("f")} AS caption
+     FROM food f LEFT JOIN food_category fc ON fc.id=f.category_id ${foodCapJoin("f")}
      WHERE f.scope='global' OR f.workspace_id=?2`,
   )
     .bind(locale, ws)
@@ -156,7 +168,7 @@ app.put("/api/foods/:id", async (c) => {
   )
     .bind(await catId(c.env.DB, b.category_key), vals.kcal, vals.protein, vals.fat, vals.carb, ws, id, locale)
     .first<{ id: number }>();
-  const name = b.name ?? (await c.env.DB.prepare(`SELECT ${foodCaption("f")} AS caption FROM food f WHERE f.id=?2`).bind(locale, id).first<{ caption: string }>())?.caption;
+  const name = b.name ?? (await c.env.DB.prepare(`SELECT ${foodCaptionOne("f")} AS caption FROM food f WHERE f.id=?2`).bind(locale, id).first<{ caption: string }>())?.caption;
   await c.env.DB.prepare("INSERT INTO food_caption (food_id,locale,caption) VALUES (?,?,?)").bind(variant!.id, locale, name ?? "food").run();
   return c.json({ id: variant!.id, variant: true, base_food_id: id }, 201);
 });
@@ -166,9 +178,11 @@ app.get("/api/recipes", async (c) => {
   const locale = c.get("locale");
   const ws = c.get("ws");
   const rows = await c.env.DB.prepare(
-    `SELECT r.id, r.cat1, r.cat2, r.cat3, r.servings, ${recipeCaption("r")} AS caption,
-            (SELECT COUNT(*) FROM recipe_ingredient WHERE recipe_id=r.id) AS ingredient_count
-     FROM recipe r WHERE r.scope='global' OR r.workspace_id=?2`,
+    `SELECT r.id, r.cat1, r.cat2, r.cat3, r.servings, ${recipeCapSel("r")} AS caption,
+            COALESCE(ic.c, 0) AS ingredient_count
+     FROM recipe r ${recipeCapJoin("r")}
+     LEFT JOIN (SELECT recipe_id, COUNT(*) AS c FROM recipe_ingredient GROUP BY recipe_id) ic ON ic.recipe_id=r.id
+     WHERE r.scope='global' OR r.workspace_id=?2`,
   )
     .bind(locale, ws)
     .all<{ id: number; caption: string; cat1: string; cat2: string; cat3: string; servings: number; ingredient_count: number }>();
@@ -183,10 +197,10 @@ app.get("/api/recipes", async (c) => {
 app.get("/api/recipes/:id", async (c) => {
   const locale = c.get("locale");
   const id = Number(c.req.param("id"));
-  const recipe = await c.env.DB.prepare(`SELECT r.id, r.cat1, r.cat2, r.cat3, r.servings, ${recipeCaption("r")} AS caption FROM recipe r WHERE r.id=?2`).bind(locale, id).first();
+  const recipe = await c.env.DB.prepare(`SELECT r.id, r.cat1, r.cat2, r.cat3, r.servings, ${recipeCaptionOne("r")} AS caption FROM recipe r WHERE r.id=?2`).bind(locale, id).first();
   if (!recipe) return c.json({ error: "not found" }, 404);
   const ingredients = await c.env.DB.prepare(
-    `SELECT ri.id, ri.food_id, ri.min_g, ri.max_g, ri.position, ${foodCaption("f")} AS caption
+    `SELECT ri.id, ri.food_id, ri.min_g, ri.max_g, ri.position, ${foodCaptionOne("f")} AS caption
      FROM recipe_ingredient ri JOIN food f ON f.id=ri.food_id WHERE ri.recipe_id=?2 ORDER BY ri.position`,
   )
     .bind(locale, id)
@@ -218,8 +232,9 @@ app.put("/api/targets", async (c) => {
 // --- Week plan --------------------------------------------------------------
 app.get("/api/plan", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT p.weekday, p.slot, p.recipe_id, ${recipeCaption("r")} AS recipe_caption
-     FROM plan_slot p LEFT JOIN recipe r ON r.id=p.recipe_id WHERE p.workspace_id=?2 ORDER BY p.weekday, p.slot`,
+    `SELECT p.weekday, p.slot, p.recipe_id, ${recipeCapSel("r")} AS recipe_caption
+     FROM plan_slot p LEFT JOIN recipe r ON r.id=p.recipe_id ${recipeCapJoin("r")}
+     WHERE p.workspace_id=?2 ORDER BY p.weekday, p.slot`,
   )
     .bind(c.get("locale"), c.get("ws"))
     .all();
@@ -254,7 +269,7 @@ app.post("/api/days/:weekday/build", async (c) => {
   const slots = await c.env.DB.prepare("SELECT recipe_id FROM plan_slot WHERE workspace_id=? AND weekday=? AND recipe_id IS NOT NULL ORDER BY slot").bind(ws, weekday).all<{ recipe_id: number }>();
   let pos = 0;
   for (const s of slots.results) {
-    const recipe = await c.env.DB.prepare(`SELECT r.id, r.servings, ${recipeCaption("r")} AS caption FROM recipe r WHERE r.id=?2`).bind(locale, s.recipe_id).first<{ id: number; servings: number; caption: string }>();
+    const recipe = await c.env.DB.prepare(`SELECT r.id, r.servings, ${recipeCaptionOne("r")} AS caption FROM recipe r WHERE r.id=?2`).bind(locale, s.recipe_id).first<{ id: number; servings: number; caption: string }>();
     if (!recipe) continue;
     const ings = await c.env.DB.prepare("SELECT food_id, min_g, max_g FROM recipe_ingredient WHERE recipe_id=? ORDER BY position").bind(s.recipe_id).all<{ food_id: number; min_g: number; max_g: number }>();
     for (const ing of ings.results) {
@@ -287,8 +302,8 @@ async function loadDayItems(db: D1Database, ws: string, locale: string, weekday:
     `SELECT d.id, d.meal_label, d.food_id, d.servings, d.min_g, d.max_g, d.grams,
             f.kcal_100g, f.protein_100g, f.fat_100g, f.carb_100g,
             fc.key AS category_key, fc.label AS category_label, fc.sort_order AS category_sort,
-            ${foodCaption("f")} AS caption
-     FROM day_item d JOIN food f ON f.id=d.food_id LEFT JOIN food_category fc ON fc.id=f.category_id
+            ${foodCapSel("f")} AS caption
+     FROM day_item d JOIN food f ON f.id=d.food_id LEFT JOIN food_category fc ON fc.id=f.category_id ${foodCapJoin("f")}
      WHERE d.workspace_id=?2 AND d.weekday=?3 ORDER BY d.position`,
   )
     .bind(locale, ws, weekday)
@@ -359,8 +374,8 @@ app.get("/api/shopping", async (c) => {
   const ws = c.get("ws");
   const { results } = await c.env.DB.prepare(
     `SELECT d.food_id, d.grams, fc.key AS category_key, fc.label AS category_label, fc.sort_order AS category_sort,
-            ${foodCaption("f")} AS caption
-     FROM day_item d JOIN food f ON f.id=d.food_id LEFT JOIN food_category fc ON fc.id=f.category_id
+            ${foodCapSel("f")} AS caption
+     FROM day_item d JOIN food f ON f.id=d.food_id LEFT JOIN food_category fc ON fc.id=f.category_id ${foodCapJoin("f")}
      WHERE d.workspace_id=?2`,
   )
     .bind(c.get("locale"), ws)

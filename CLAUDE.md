@@ -49,8 +49,14 @@ PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium pnpm test:e2e  # web e2e + tr
 - Keep tasks self-contained; prefer adding files over editing shared ones.
 - Record reusable learnings back in `product-builder/learnings/` (`guidance/11`).
 
-## Not yet wired
+## Deployed
 
-- **Cloudflare D1 not provisioned.** `wrangler.jsonc` has a placeholder
-  `database_id`. A human runs `wrangler d1 create masterplan` and pastes the id;
-  CI deploy skips until then. See `docs/planning/status.md`.
+- Live at https://masterplan.aless-jeant.workers.dev. D1 is provisioned
+  (`wrangler.jsonc` has the real `database_id`) and seeded from
+  `db/seed-reference.sql`. CI auto-deploy on merge needs `CLOUDFLARE_API_TOKEN`
+  as a GitHub Actions secret (skips cleanly without it). See `docs/planning/status.md`.
+
+## Post-PoC (planned)
+
+- Macro calculator, progression log + CSV import, recipe create/edit UI, food
+  category management, translations. See `docs/planning/build-plan.md`.
