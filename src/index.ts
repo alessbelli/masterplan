@@ -41,12 +41,19 @@ app.use("*", async (c, next) => {
   c.header("x-request-id", requestId);
   const start = Date.now();
   await next();
+  const ms = Date.now() - start;
+  // Surface server-side time so the client can show work-vs-network split.
+  try {
+    c.res.headers.set("Server-Timing", `total;dur=${ms}`);
+  } catch {
+    // response headers immutable (rare) — the log still records it
+  }
   log("request", {
     requestId,
     method: c.req.method,
     path: new URL(c.req.url).pathname,
     status: c.res.status,
-    ms: Date.now() - start,
+    ms,
   });
 });
 
@@ -79,6 +86,79 @@ app.get("/health", async (c) => {
 });
 
 app.get("/api/i18n", (c) => c.json({ locale: c.get("locale"), strings: uiCatalog(c.get("locale")) }));
+
+// One-shot catalog: foods + recipes (with ingredients). Fetched once by the
+// client, which then searches, plans, computes macros, and optimizes locally —
+// no per-keystroke or per-optimize round-trips.
+app.get("/api/catalog", async (c) => {
+  const locale = c.get("locale");
+  const ws = c.get("ws");
+  const foodRows = await c.env.DB.prepare(
+    `SELECT f.id, f.scope, f.base_food_id, f.kcal_100g, f.protein_100g, f.fat_100g, f.carb_100g,
+            fc.key AS category_key, fc.label AS category_label, fc.sort_order AS category_sort,
+            ${foodCapSel("f")} AS caption
+     FROM food f LEFT JOIN food_category fc ON fc.id=f.category_id ${foodCapJoin("f")}
+     WHERE f.scope='global' OR f.workspace_id=?2`,
+  )
+    .bind(locale, ws)
+    .all<FoodRow>();
+  const shadowed = new Set(foodRows.results.filter((r) => r.base_food_id).map((r) => r.base_food_id));
+  const foods = foodRows.results.filter((r) => !shadowed.has(r.id)).sort((a, b) => a.caption.localeCompare(b.caption));
+
+  const recipeRows = await c.env.DB.prepare(
+    `SELECT r.id, r.servings, r.cat1, r.cat2, r.cat3, ${recipeCapSel("r")} AS caption
+     FROM recipe r ${recipeCapJoin("r")} WHERE r.scope='global' OR r.workspace_id=?2`,
+  )
+    .bind(locale, ws)
+    .all<{ id: number; servings: number; caption: string; cat1: string; cat2: string; cat3: string }>();
+  const ingRows = await c.env.DB.prepare(
+    `SELECT ri.recipe_id, ri.food_id, ri.min_g, ri.max_g, ri.position
+     FROM recipe_ingredient ri JOIN recipe r ON r.id=ri.recipe_id
+     WHERE r.scope='global' OR r.workspace_id=?1 ORDER BY ri.recipe_id, ri.position`,
+  )
+    .bind(ws)
+    .all<{ recipe_id: number; food_id: number; min_g: number; max_g: number; position: number }>();
+  const byRecipe = new Map<number, { food_id: number; min_g: number; max_g: number }[]>();
+  for (const ing of ingRows.results) {
+    const list = byRecipe.get(ing.recipe_id) ?? byRecipe.set(ing.recipe_id, []).get(ing.recipe_id)!;
+    list.push({ food_id: ing.food_id, min_g: ing.min_g, max_g: ing.max_g });
+  }
+  const recipes = recipeRows.results
+    .map((r) => ({ ...r, ingredients: byRecipe.get(r.id) ?? [] }))
+    .sort((a, b) => a.caption.localeCompare(b.caption));
+  return c.json({ foods, recipes });
+});
+
+// One-shot workspace state for boot: targets, all day items, extras.
+app.get("/api/state", async (c) => {
+  const ws = c.get("ws");
+  const [targets, items, extras] = await Promise.all([
+    c.env.DB.prepare("SELECT weekday, kcal, protein_g, fat_g, carb_g FROM day_target WHERE workspace_id=?").bind(ws).all(),
+    c.env.DB.prepare("SELECT id, weekday, meal_label, food_id, servings, min_g, max_g, grams, position FROM day_item WHERE workspace_id=? ORDER BY weekday, position").bind(ws).all(),
+    c.env.DB.prepare("SELECT id, name, quantity FROM shopping_extra WHERE workspace_id=?").bind(ws).all(),
+  ]);
+  return c.json({ targets: targets.results, items: items.results, extras: extras.results });
+});
+
+// Bulk replace a day's items (one write for the whole day, saved in background).
+app.put("/api/days/:weekday", async (c) => {
+  const ws = c.get("ws");
+  const weekday = Number(c.req.param("weekday"));
+  const b = await c.req.json().catch(() => ({ items: [] }));
+  const items: unknown[] = Array.isArray(b.items) ? b.items : [];
+  const stmts: D1PreparedStatement[] = [c.env.DB.prepare("DELETE FROM day_item WHERE workspace_id=? AND weekday=?").bind(ws, weekday)];
+  let pos = 0;
+  for (const raw of items) {
+    const it = raw as Record<string, unknown>;
+    stmts.push(
+      c.env.DB.prepare(
+        "INSERT INTO day_item (workspace_id,weekday,meal_label,food_id,servings,min_g,max_g,grams,position) VALUES (?,?,?,?,?,?,?,?,?)",
+      ).bind(ws, weekday, String(it.meal_label ?? ""), Number(it.food_id), num(it.servings, 1), num(it.min_g, 0), num(it.max_g, 0), num(it.grams, 0), pos++),
+    );
+  }
+  await c.env.DB.batch(stmts);
+  return c.json({ ok: true, items: items.length });
+});
 
 // --- Foods ------------------------------------------------------------------
 app.get("/api/food-categories", async (c) => {

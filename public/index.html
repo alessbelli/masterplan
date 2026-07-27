@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>masterplan</title>
     <style>
-      :root { color-scheme: light dark; --line: #8884; --accent: #2f7; --ok: #1a8; --bad: #d44; }
+      :root { color-scheme: light dark; --line: #8884; --ok: #1a8; --bad: #d44; }
       * { box-sizing: border-box; }
       body { font-family: system-ui, sans-serif; margin: 0; line-height: 1.5; }
-      header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: Canvas; }
+      header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: Canvas; z-index: 1; }
       header h1 { font-size: 1.1rem; margin: 0; }
       main { max-width: 60rem; margin: 0 auto; padding: 1rem; display: grid; gap: 1.25rem; }
       section { border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
@@ -25,21 +25,21 @@
       .muted { color: #8889; font-size: .85rem; }
       .results { max-height: 14rem; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: .5rem; }
       .results div { display: flex; justify-content: space-between; gap: .5rem; padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
-      .pill { padding: .1rem .5rem; border-radius: 999px; font-size: .8rem; }
       .ok { color: var(--ok); } .bad { color: var(--bad); font-weight: 600; }
       .totals td { font-weight: 600; }
-      #status { font-size: .85rem; }
+      #perf { font-size: .78rem; margin-left: auto; text-align: right; }
+      #status { font-size: .8rem; }
     </style>
   </head>
   <body>
     <header>
       <h1>masterplan</h1>
-      <span class="muted">meal planner · macros · shopping</span>
-      <span id="status" class="muted" style="margin-left:auto"></span>
+      <span class="muted">meal planner · runs in your browser</span>
+      <span id="perf" class="muted"></span>
       <button id="reset">Reset</button>
     </header>
     <main>
-      <section id="targets-sec">
+      <section>
         <h2>Daily macro targets</h2>
         <div class="row">
           <label>Calories <input id="t-kcal" type="number" value="2700" /></label>
@@ -47,26 +47,23 @@
           <label>Fat (g) <input id="t-fat" type="number" value="66" /></label>
           <label>Carbs (g) <input id="t-carb" type="number" value="358.5" /></label>
           <button id="save-targets" class="primary">Save targets</button>
+          <span id="status" class="muted"></span>
         </div>
-        <p class="muted">Applied to every day. (The full body-stats calculator is a post-PoC feature.)</p>
       </section>
 
       <section>
         <h2>Day</h2>
         <div class="row">
-          <label>Weekday
-            <select id="weekday"></select>
-          </label>
-          <input id="recipe-q" placeholder="search recipes…" />
-          <input id="food-q" placeholder="search foods to add…" />
-          <button id="build">Build day from plan</button>
+          <label>Weekday <select id="weekday"></select></label>
+          <input id="recipe-q" placeholder="search recipes…" autocomplete="off" />
+          <input id="food-q" placeholder="search foods to add…" autocomplete="off" />
           <button id="optimize" class="primary">Optimize grams</button>
         </div>
         <div id="search-results"></div>
         <p id="opt-msg"></p>
         <table id="day">
           <thead>
-            <tr><th>Meal</th><th>Food</th><th class="num">kcal</th><th class="num">P</th><th class="num">F</th><th class="num">C</th><th class="num">min–max</th><th class="num">grams</th></tr>
+            <tr><th>Meal</th><th>Food</th><th class="num">kcal</th><th class="num">P</th><th class="num">F</th><th class="num">C</th><th class="num">min–max</th><th class="num">grams</th><th></th></tr>
           </thead>
           <tbody></tbody>
           <tfoot></tfoot>
@@ -79,48 +76,108 @@
       </section>
     </main>
 
-    <script>
+    <script type="module">
+      import { dayMacros, optimizeDay, shoppingRollup } from "./planner-core.js";
+
       const $ = (s) => document.querySelector(s);
       const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
       let weekday = 0;
-      const api = async (path, method = "GET", body) => {
+
+      // In-memory app state (server is only catalog + background persistence).
+      const cat = { foods: [], recipes: [], foodById: new Map() };
+      const days = { 0:[],1:[],2:[],3:[],4:[],5:[],6:[] };
+      const targetByDay = {};
+      let extras = [];
+
+      // fetch wrapper that measures network vs server time (compute is local = 0 req).
+      async function api(path, method = "GET", body) {
+        const t0 = performance.now();
         const res = await fetch(path, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.status); }
-        return res.json();
-      };
+        const net = performance.now() - t0;
+        const st = res.headers.get("Server-Timing");
+        const srv = st ? Number((st.match(/dur=([\d.]+)/) || [])[1]) : null;
+        showPerf(`${method} ${path.split("?")[0]} — network ${net.toFixed(0)}ms${srv != null ? ` · server ${srv}ms` : ""}`);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.status);
+        return res.status === 204 ? null : res.json();
+      }
+      const showPerf = (m) => { $("#perf").textContent = m; };
       const setStatus = (m) => { $("#status").textContent = m; };
+      // Background save — never blocks the UI.
+      const saveDay = debounce((d) => { api(`/api/days/${d}`, "PUT", { items: days[d] }).catch(() => {}); }, 300);
 
-      // weekday selector
       DAYS.forEach((d, i) => { const o = document.createElement("option"); o.value = i; o.textContent = d; $("#weekday").appendChild(o); });
-      $("#weekday").addEventListener("change", (e) => { weekday = +e.target.value; loadDay(); });
+      $("#weekday").addEventListener("change", (e) => { weekday = +e.target.value; render(); });
 
-      $("#save-targets").addEventListener("click", async () => {
-        await api("/api/targets", "PUT", {
-          kcal: +$("#t-kcal").value, protein_g: +$("#t-protein").value, fat_g: +$("#t-fat").value, carb_g: +$("#t-carb").value,
-        });
-        setStatus("targets saved");
-        loadDay();
+      // ---- lookups + conversions ----
+      const withMacros = (it) => ({ ...cat.foodById.get(it.food_id), grams: it.grams, servings: it.servings });
+      const foodOf = (id) => cat.foodById.get(id) || { caption: "?", category_key: "uncategorized", category_label: "Uncategorized", category_sort: 999, kcal_100g: 0, protein_100g: 0, fat_100g: 0, carb_100g: 0 };
+
+      // ---- client-side search (no requests) ----
+      $("#recipe-q").addEventListener("input", (e) => {
+        const q = e.target.value.trim().toLowerCase();
+        if (!q) return renderResults([]);
+        renderResults(cat.recipes.filter((r) => r.caption.toLowerCase().includes(q)).slice(0, 20).map((r) => ({
+          label: `${r.caption} · ${r.ingredients.length} ing${r.servings > 1 ? ` · makes ${r.servings}` : ""}`,
+          action: () => { addRecipe(r); $("#recipe-q").value = ""; renderResults([]); },
+        })));
+      });
+      $("#food-q").addEventListener("input", (e) => {
+        const q = e.target.value.trim().toLowerCase();
+        if (!q) return renderResults([]);
+        renderResults(cat.foods.filter((f) => f.caption.toLowerCase().includes(q)).slice(0, 20).map((f) => ({
+          label: `${f.caption} · ${f.kcal_100g}kcal/100g`,
+          action: () => { addFood(f); $("#food-q").value = ""; renderResults([]); },
+        })));
       });
 
-      // recipe search → add to plan then rebuild-friendly
-      $("#recipe-q").addEventListener("input", debounce(async (e) => {
-        const q = e.target.value.trim();
-        if (!q) return renderResults([]);
-        const { recipes } = await api("/api/recipes?query=" + encodeURIComponent(q) + "&limit=15");
-        renderResults(recipes.map((r) => ({ label: r.caption + ` · ${r.ingredient_count} ing`, action: async () => {
-          const slot = await nextSlot(); await api("/api/plan", "PUT", { weekday, slot, recipe_id: r.id }); setStatus(`added "${r.caption}" to ${DAYS[weekday]}`); renderResults([]); $("#recipe-q").value = "";
-        }})));
-      }));
+      function addRecipe(r) {
+        for (const ing of r.ingredients) {
+          days[weekday].push({ food_id: ing.food_id, meal_label: r.caption, servings: r.servings, min_g: ing.min_g, max_g: ing.max_g, grams: ing.min_g });
+        }
+        setStatus(`added "${r.caption}"`); saveDay(weekday); render();
+      }
+      function addFood(f) {
+        days[weekday].push({ food_id: f.id, meal_label: "Miscellaneous", servings: 1, min_g: 0, max_g: 100, grams: 100 });
+        setStatus(`added "${f.caption}"`); saveDay(weekday); render();
+      }
 
-      $("#food-q").addEventListener("input", debounce(async (e) => {
-        const q = e.target.value.trim();
-        if (!q) return renderResults([]);
-        const { foods } = await api("/api/foods?query=" + encodeURIComponent(q) + "&limit=15");
-        renderResults(foods.map((f) => ({ label: f.caption + ` · ${f.kcal_100g}kcal/100g`, action: async () => {
-          await api(`/api/days/${weekday}/add-food`, "POST", { food_id: f.id, grams: 100 }); setStatus(`added "${f.caption}"`); renderResults([]); $("#food-q").value = ""; loadDay();
-        }})));
-      }));
+      // ---- optimize: runs locally via the bundled solver ----
+      $("#optimize").addEventListener("click", () => {
+        const items = days[weekday];
+        if (!items.length) { $("#opt-msg").innerHTML = '<span class="bad">Add a recipe or food first.</span>'; return; }
+        const target = targetByDay[weekday];
+        if (!target) { $("#opt-msg").innerHTML = '<span class="bad">Save your macro targets first.</span>'; return; }
+        const t0 = performance.now();
+        const res = optimizeDay(items.map((it) => ({ ...cat.foodById.get(it.food_id), min_g: it.min_g, max_g: it.max_g, servings: it.servings })), target, 0.05);
+        const dt = performance.now() - t0;
+        items.forEach((it, i) => { it.grams = res.grams[i]; });
+        if (res.status === "optimal") {
+          $("#opt-msg").innerHTML = '<span class="ok">✓ Optimized — calories, protein and fat are within ±5% of target.</span>';
+        } else {
+          const NAMES = { kcal: "Calories", protein: "Protein", fat: "Fat" };
+          const red = res.unmet.map((u) => `${NAMES[u.macro] || u.macro} (${u.direction === "too_low" ? "can't reach it" : "unavoidably too high"})`).join(", ");
+          const detail = red ? `these can't be met with the current foods and gram limits: <strong>${red}</strong>.` : "no single combination of these foods hits calories, protein and fat all at once.";
+          $("#opt-msg").innerHTML = `<span class="bad">Couldn't hit your targets within ±5% — ${detail}</span><br><span class="muted">Try adding more varied foods, or widen a food's min–max range.</span>`;
+        }
+        showPerf(`optimized locally in ${dt.toFixed(1)}ms · 0 requests`);
+        saveDay(weekday); render();
+      });
 
+      $("#save-targets").addEventListener("click", () => {
+        const t = { kcal: +$("#t-kcal").value, protein_g: +$("#t-protein").value, fat_g: +$("#t-fat").value, carb_g: +$("#t-carb").value };
+        for (let d = 0; d < 7; d++) targetByDay[d] = { ...t };
+        setStatus("targets saved"); render();
+        api("/api/targets", "PUT", t).catch(() => {}); // background
+      });
+
+      $("#reset").addEventListener("click", async () => {
+        for (let d = 0; d < 7; d++) days[d] = [];
+        extras = []; setStatus("workspace reset"); render();
+        api("/api/reset", "POST").catch(() => {});
+      });
+      $("#refresh-shop").addEventListener("click", renderShopping);
+
+      // ---- rendering (all local) ----
       function renderResults(items) {
         const box = $("#search-results");
         if (!items.length) { box.innerHTML = ""; return; }
@@ -134,79 +191,72 @@
         });
       }
 
-      async function nextSlot() {
-        const { plan } = await api("/api/plan");
-        const slots = plan.filter((p) => p.weekday === weekday).map((p) => p.slot);
-        return slots.length ? Math.max(...slots) + 1 : 0;
-      }
+      function render() { renderDay(); renderShopping(); }
 
-      $("#build").addEventListener("click", async () => { const r = await api(`/api/days/${weekday}/build`, "POST"); setStatus(`built ${DAYS[weekday]}: ${r.items} ingredients`); loadDay(); });
-
-      $("#optimize").addEventListener("click", async () => {
-        try {
-          const r = await api(`/api/days/${weekday}/optimize`, "POST");
-          if (r.status === "optimal") { $("#opt-msg").innerHTML = '<span class="ok">✓ Optimized — your calories, protein and fat are within ±5% of target.</span>'; }
-          else {
-            const NAMES = { kcal: "Calories", protein: "Protein", fat: "Fat" };
-            const red = r.unmet.map((u) => `${NAMES[u.macro] || u.macro} (${u.direction === "too_low" ? "can't reach it" : "unavoidably too high"})`).join(", ");
-            const detail = red
-              ? `these can't be met with the current foods and gram limits: <strong>${red}</strong>.`
-              : "no single combination of these foods hits calories, protein and fat all at once.";
-            $("#opt-msg").innerHTML = `<span class="bad">Couldn't hit your targets within ±5% — ${detail}</span>` +
-              `<br><span class="muted">Try adding more varied foods to the day, or widen a food's min–max gram range.</span>`;
-          }
-          loadDay();
-        } catch (e) { $("#opt-msg").innerHTML = `<span class="bad">${e.message}</span>`; }
-      });
-
-      async function loadDay() {
-        const { items, totals, target } = await api(`/api/days/${weekday}`);
+      function renderDay() {
         const tb = $("#day tbody"); tb.innerHTML = "";
-        items.forEach((it) => {
-          const tr = document.createElement("tr");
+        const items = days[weekday];
+        items.forEach((it, idx) => {
+          const f = foodOf(it.food_id);
+          const s = it.grams / 100 / (it.servings || 1);
           const m = (v) => (Math.round(v * 10) / 10).toString();
-          const f = it.grams / 100 / (it.servings || 1);
-          tr.innerHTML = `<td>${esc(it.meal_label)}</td><td>${esc(it.caption)}</td>
-            <td class="num">${m(it.kcal_100g*f)}</td><td class="num">${m(it.protein_100g*f)}</td>
-            <td class="num">${m(it.fat_100g*f)}</td><td class="num">${m(it.carb_100g*f)}</td>
-            <td class="num muted">${it.min_g}–${it.max_g}</td><td class="num"></td>`;
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${esc(it.meal_label)}</td><td>${esc(f.caption)}</td>
+            <td class="num">${m(f.kcal_100g*s)}</td><td class="num">${m(f.protein_100g*s)}</td>
+            <td class="num">${m(f.fat_100g*s)}</td><td class="num">${m(f.carb_100g*s)}</td>
+            <td class="num muted">${it.min_g}–${it.max_g}</td><td class="num"></td><td class="num"></td>`;
           const g = document.createElement("input"); g.type = "number"; g.value = it.grams; g.min = 0;
-          g.addEventListener("change", async () => { await api(`/api/day-items/${it.id}`, "PATCH", { grams: +g.value }); loadDay(); });
-          tr.lastElementChild.appendChild(g);
+          g.addEventListener("input", () => { it.grams = +g.value || 0; renderTotals(); renderShopping(); saveDay(weekday); });
+          tr.children[7].appendChild(g);
+          const del = document.createElement("button"); del.textContent = "✕"; del.title = "remove";
+          del.onclick = () => { items.splice(idx, 1); saveDay(weekday); render(); };
+          tr.children[8].appendChild(del);
           tb.appendChild(tr);
         });
-        renderTotals(totals, target);
+        renderTotals();
       }
 
-      function renderTotals(totals, target) {
+      function renderTotals() {
+        const totals = dayMacros(days[weekday].map(withMacros));
+        const target = targetByDay[weekday];
         const tf = $("#day tfoot"); tf.innerHTML = "";
-        if (!target) { tf.innerHTML = `<tr class="totals"><td colspan="8" class="muted">Set targets to see how close you are.</td></tr>`; }
         const cell = (val, tgt) => {
-          const ratio = tgt ? val / tgt : 0;
-          const cls = tgt && Math.abs(ratio - 1) > 0.05 ? "bad" : "ok";
-          return `<td class="num ${tgt ? cls : ""}">${Math.round(val)}${tgt ? ` / ${Math.round(tgt)}` : ""}</td>`;
+          const cls = tgt ? (Math.abs(val / tgt - 1) > 0.05 ? "bad" : "ok") : "";
+          return `<td class="num ${cls}">${Math.round(val)}${tgt ? ` / ${Math.round(tgt)}` : ""}</td>`;
         };
         const tr = document.createElement("tr"); tr.className = "totals";
         tr.innerHTML = `<td colspan="2">Day total ${target ? "vs target" : ""}</td>${cell(totals.kcal, target?.kcal)}${cell(totals.protein_g, target?.protein_g)}${cell(totals.fat_g, target?.fat_g)}${cell(totals.carb_g, target?.carb_g)}<td colspan="2"></td>`;
         tf.appendChild(tr);
       }
 
-      $("#refresh-shop").addEventListener("click", loadShopping);
-      async function loadShopping() {
-        const { groups } = await api("/api/shopping");
+      function renderShopping() {
+        const src = [];
+        for (let d = 0; d < 7; d++) for (const it of days[d]) {
+          const f = foodOf(it.food_id);
+          src.push({ food_id: it.food_id, caption: f.caption, category_key: f.category_key || "uncategorized", category_label: f.category_label || "Uncategorized", category_sort: f.category_sort ?? 500, grams: it.grams });
+        }
+        const groups = shoppingRollup(src, extras);
         const box = $("#shopping");
-        if (!groups.length) { box.innerHTML = '<p class="muted">Nothing yet — build a day or add foods.</p>'; return; }
+        if (!groups.length) { box.innerHTML = '<p class="muted">Nothing yet — add a recipe or food to a day.</p>'; return; }
         box.innerHTML = groups.map((g) => `<h3 style="margin:.5rem 0 .2rem;font-size:.9rem">${esc(g.category_label)}</h3>` +
-          '<table><tbody>' + g.lines.map((l) => `<tr><td>${esc(l.caption)}</td><td class="num">${esc(l.quantity)}</td></tr>`).join("") + "</tbody></table>").join("");
+          "<table><tbody>" + g.lines.map((l) => `<tr><td>${esc(l.caption)}</td><td class="num">${esc(l.quantity)}</td></tr>`).join("") + "</tbody></table>").join("");
       }
 
-      $("#reset").addEventListener("click", async () => { await api("/api/reset", "POST"); setStatus("workspace reset"); loadDay(); loadShopping(); });
-
-      function debounce(fn, ms = 200) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+      function debounce(fn, ms = 250) { const t = {}; return (arg) => { clearTimeout(t[arg]); t[arg] = setTimeout(() => fn(arg), ms); }; }
       function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
-      // boot
-      (async () => { try { await api("/api/i18n"); } catch {} loadDay(); loadShopping(); })();
+      // ---- boot: one catalog request + one state request, then all-local ----
+      (async () => {
+        const [catalog, state] = await Promise.all([api("/api/catalog"), api("/api/state")]);
+        cat.foods = catalog.foods; cat.recipes = catalog.recipes;
+        cat.foodById = new Map(catalog.foods.map((f) => [f.id, f]));
+        for (const it of state.items) days[it.weekday].push({ food_id: it.food_id, meal_label: it.meal_label, servings: it.servings, min_g: it.min_g, max_g: it.max_g, grams: it.grams });
+        for (const t of state.targets) targetByDay[t.weekday] = { kcal: t.kcal, protein_g: t.protein_g, fat_g: t.fat_g, carb_g: t.carb_g };
+        extras = state.extras.map((e) => ({ name: e.name, quantity: e.quantity }));
+        if (targetByDay[0]) { $("#t-kcal").value = targetByDay[0].kcal; $("#t-protein").value = targetByDay[0].protein_g; $("#t-fat").value = targetByDay[0].fat_g; $("#t-carb").value = targetByDay[0].carb_g; }
+        showPerf(`loaded catalog (${cat.foods.length} foods, ${cat.recipes.length} recipes) — everything else runs locally`);
+        render();
+      })();
     </script>
   </body>
 </html>

@@ -11,15 +11,13 @@ test("plan a day, optimize macros, and get a shopping list", async ({ page }) =>
   await page.locator("#save-targets").click();
   await expect(page.locator("#status")).toContainText("targets saved");
 
-  // Search a recipe from the seeded catalog and add it to the day's plan.
+  // Search a recipe from the catalog (client-side) and add it to the day.
   await page.locator("#recipe-q").fill("prot");
   const firstAdd = page.locator("#search-results .results div button").first();
   await expect(firstAdd).toBeVisible();
   await firstAdd.click();
   await expect(page.locator("#status")).toContainText("added");
-
-  // Build the day from the plan → ingredient rows appear.
-  await page.locator("#build").click();
+  // Ingredient rows appear immediately (no round-trip).
   await expect(page.locator("#day tbody tr")).not.toHaveCount(0);
 
   // Optimize grams → the optimizer runs and reports a result.

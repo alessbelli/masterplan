@@ -8,6 +8,9 @@ dist/
 # Generated Worker types
 worker-configuration.d.ts
 
+# Generated client bundle (built by `pnpm build:client`)
+public/planner-core.js
+
 # Playwright
 test-results/
 playwright-report/
