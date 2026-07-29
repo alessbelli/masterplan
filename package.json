@@ -8,18 +8,19 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "pnpm build:client && wrangler dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "build:client": "esbuild src/client/planner-core.ts --bundle --format=esm --target=es2020 --minify --outfile=public/planner-core.js",
     "db:migrate:local": "wrangler d1 migrations apply masterplan --local",
     "db:migrate:remote": "wrangler d1 migrations apply masterplan --remote",
     "db:seed:local": "wrangler d1 execute masterplan --local --file db/seed-reference.sql",
     "db:seed:remote": "wrangler d1 execute masterplan --remote --file db/seed-reference.sql",
     "db:setup:local": "pnpm db:migrate:local && pnpm db:seed:local",
     "gen:seed": "node scripts/gen-seed.mjs",
-    "deploy": "wrangler deploy",
+    "deploy": "pnpm build:client && wrangler deploy",
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {
@@ -27,6 +28,7 @@
     "@cloudflare/workers-types": "^4.20250718.0",
     "@playwright/test": "^1.49.1",
     "@types/node": "^22.20.1",
+    "esbuild": "^0.28.1",
     "typescript": "^5.7.3",
     "vitest": "3.2.4",
     "wrangler": "^4.114.0"

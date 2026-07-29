@@ -69,6 +69,26 @@ describe("catalog", () => {
   });
 });
 
+describe("client-side data endpoints", () => {
+  it("returns the whole catalog (foods + recipes with ingredients) in one shot", async () => {
+    const cat = await (await req("/api/catalog")).json<{ foods: unknown[]; recipes: { caption: string; ingredients: unknown[] }[] }>();
+    expect(cat.foods).toHaveLength(3);
+    const cr = cat.recipes.find((r) => r.caption === "Chicken & Rice")!;
+    expect(cr.ingredients).toHaveLength(2);
+  });
+
+  it("bulk-saves a day and returns it in /api/state", async () => {
+    const { foods } = await (await req("/api/foods")).json<{ foods: { id: number }[] }>();
+    const items = [{ food_id: foods[0].id, meal_label: "Test", servings: 1, min_g: 0, max_g: 200, grams: 150 }];
+    const put = await (await req("/api/days/2", { method: "PUT", body: JSON.stringify({ items }) })).json<{ items: number }>();
+    expect(put.items).toBe(1);
+    const state = await (await req("/api/state")).json<{ items: { weekday: number; grams: number }[] }>();
+    const saved = state.items.filter((i) => i.weekday === 2);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].grams).toBe(150);
+  });
+});
+
 describe("planning loop", () => {
   async function recipeId() {
     const { recipes } = await (await req("/api/recipes")).json<{ recipes: { id: number }[] }>();
