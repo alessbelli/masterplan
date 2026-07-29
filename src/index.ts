@@ -446,7 +446,7 @@ app.post("/api/days/:weekday/optimize", async (c) => {
     await c.env.DB.prepare("UPDATE day_item SET grams=? WHERE id=?").bind(result.grams[i], items[i].id).run();
   }
   log("day.optimize", { ws, weekday, status: result.status, unmet: result.unmet.length });
-  return c.json({ status: result.status, macros: result.macros, target, unmet: result.unmet });
+  return c.json({ status: result.status, macros: result.macros, target, goals: result.goals, unmet: result.unmet });
 });
 
 // --- Shopping list ----------------------------------------------------------
