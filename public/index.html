@@ -46,9 +46,11 @@
           <label>Protein (g) <input id="t-protein" type="number" value="168" /></label>
           <label>Fat (g) <input id="t-fat" type="number" value="66" /></label>
           <label>Carbs (g) <input id="t-carb" type="number" value="358.5" /></label>
+          <label>Calorie band ±<input id="t-band" type="number" value="5" style="width:3.5rem" />%</label>
           <button id="save-targets" class="primary">Save targets</button>
           <span id="status" class="muted"></span>
         </div>
+        <p id="strategy" class="muted"></p>
       </section>
 
       <section>
@@ -63,7 +65,7 @@
         <p id="opt-msg"></p>
         <table id="day">
           <thead>
-            <tr><th>Meal</th><th>Food</th><th class="num">kcal</th><th class="num">P</th><th class="num">F</th><th class="num">C</th><th class="num">min–max</th><th class="num">grams</th><th></th></tr>
+            <tr><th>Meal</th><th>Food</th><th class="num">kcal</th><th class="num">P</th><th class="num">F</th><th class="num">C</th><th class="num">min g</th><th class="num">max g</th><th class="num">grams</th><th></th></tr>
           </thead>
           <tbody></tbody>
           <tfoot></tfoot>
@@ -78,6 +80,7 @@
 
     <script type="module">
       import { dayMacros, optimizeDay, shoppingRollup } from "./planner-core.js";
+      const MN = { kcal: "Calories", protein: "Protein", fat: "Fat", carb: "Carbs" };
 
       const $ = (s) => document.querySelector(s);
       const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
@@ -147,17 +150,22 @@
         if (!items.length) { $("#opt-msg").innerHTML = '<span class="bad">Add a recipe or food first.</span>'; return; }
         const target = targetByDay[weekday];
         if (!target) { $("#opt-msg").innerHTML = '<span class="bad">Save your macro targets first.</span>'; return; }
+        const band = (+$("#t-band").value || 5) / 100;
         const t0 = performance.now();
-        const res = optimizeDay(items.map((it) => ({ ...cat.foodById.get(it.food_id), min_g: it.min_g, max_g: it.max_g, servings: it.servings })), target, 0.05);
+        const res = optimizeDay(items.map((it) => ({ ...cat.foodById.get(it.food_id), min_g: it.min_g, max_g: it.max_g, servings: it.servings })), target, band);
         const dt = performance.now() - t0;
         items.forEach((it, i) => { it.grams = res.grams[i]; });
         if (res.status === "optimal") {
-          $("#opt-msg").innerHTML = '<span class="ok">✓ Optimized — calories, protein and fat are within ±5% of target.</span>';
+          const parts = res.goals.map((g) => {
+            const v = Math.round(g.achieved);
+            if (g.kind === "range" || g.kind === "target") return `${MN[g.macro]} ${v} (${Math.round(g.band.min)}–${Math.round(g.band.max)}) ${g.satisfied ? "✓" : "✕"}`;
+            return `${MN[g.macro]} ${g.kind === "maximize" ? "maximized" : "minimized"} → ${v}g`;
+          });
+          $("#opt-msg").innerHTML = `<span class="ok">✓ Optimized.</span> <span class="muted">${parts.join(" · ")}</span>`;
         } else {
-          const NAMES = { kcal: "Calories", protein: "Protein", fat: "Fat" };
-          const red = res.unmet.map((u) => `${NAMES[u.macro] || u.macro} (${u.direction === "too_low" ? "can't reach it" : "unavoidably too high"})`).join(", ");
-          const detail = red ? `these can't be met with the current foods and gram limits: <strong>${red}</strong>.` : "no single combination of these foods hits calories, protein and fat all at once.";
-          $("#opt-msg").innerHTML = `<span class="bad">Couldn't hit your targets within ±5% — ${detail}</span><br><span class="muted">Try adding more varied foods, or widen a food's min–max range.</span>`;
+          const red = res.unmet.map((u) => `${MN[u.macro] || u.macro} (${u.direction === "too_low" ? "can't reach it" : "unavoidably too high"})`).join(", ");
+          const detail = red ? `can't be met with the current foods and gram limits: <strong>${red}</strong>.` : "no combination of these foods lands calories in range.";
+          $("#opt-msg").innerHTML = `<span class="bad">Couldn't hit the calorie range — ${detail}</span><br><span class="muted">Widen a food's max grams, or add more varied foods.</span>`;
         }
         showPerf(`optimized locally in ${dt.toFixed(1)}ms · 0 requests`);
         saveDay(weekday); render();
@@ -191,7 +199,12 @@
         });
       }
 
-      function render() { renderDay(); renderShopping(); }
+      function render() { renderStrategy(); renderDay(); renderShopping(); }
+      function renderStrategy() {
+        const band = +$("#t-band").value || 5;
+        $("#strategy").textContent = `Optimizer priority: get calories within ±${band}% of target → then maximize protein → then minimize fat, adjusting each food's grams within its min–max range. Widen a food's max grams to allow a larger serving.`;
+      }
+      $("#t-band").addEventListener("input", renderStrategy);
 
       function renderDay() {
         const tb = $("#day tbody"); tb.innerHTML = "";
@@ -204,13 +217,16 @@
           tr.innerHTML = `<td>${esc(it.meal_label)}</td><td>${esc(f.caption)}</td>
             <td class="num">${m(f.kcal_100g*s)}</td><td class="num">${m(f.protein_100g*s)}</td>
             <td class="num">${m(f.fat_100g*s)}</td><td class="num">${m(f.carb_100g*s)}</td>
-            <td class="num muted">${it.min_g}–${it.max_g}</td><td class="num"></td><td class="num"></td>`;
-          const g = document.createElement("input"); g.type = "number"; g.value = it.grams; g.min = 0;
-          g.addEventListener("input", () => { it.grams = +g.value || 0; renderTotals(); renderShopping(); saveDay(weekday); });
-          tr.children[7].appendChild(g);
+            <td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td>`;
+          // Editable quantity range (min/max) + chosen grams. Widen max to allow
+          // a larger serving; the optimizer stays within [min, max].
+          const numIn = (val, on, w = "4.5rem") => { const i = document.createElement("input"); i.type = "number"; i.value = val; i.min = 0; i.style.width = w; i.addEventListener("input", () => on(+i.value || 0)); return i; };
+          tr.children[6].appendChild(numIn(it.min_g, (v) => { it.min_g = v; if (it.grams < v) it.grams = v; renderTotals(); renderShopping(); saveDay(weekday); }));
+          tr.children[7].appendChild(numIn(it.max_g, (v) => { it.max_g = v; if (it.grams > v) it.grams = v; renderTotals(); renderShopping(); saveDay(weekday); }));
+          tr.children[8].appendChild(numIn(it.grams, (v) => { it.grams = v; renderTotals(); renderShopping(); saveDay(weekday); }, "5rem"));
           const del = document.createElement("button"); del.textContent = "✕"; del.title = "remove";
           del.onclick = () => { items.splice(idx, 1); saveDay(weekday); render(); };
-          tr.children[8].appendChild(del);
+          tr.children[9].appendChild(del);
           tb.appendChild(tr);
         });
         renderTotals();
@@ -225,7 +241,7 @@
           return `<td class="num ${cls}">${Math.round(val)}${tgt ? ` / ${Math.round(tgt)}` : ""}</td>`;
         };
         const tr = document.createElement("tr"); tr.className = "totals";
-        tr.innerHTML = `<td colspan="2">Day total ${target ? "vs target" : ""}</td>${cell(totals.kcal, target?.kcal)}${cell(totals.protein_g, target?.protein_g)}${cell(totals.fat_g, target?.fat_g)}${cell(totals.carb_g, target?.carb_g)}<td colspan="2"></td>`;
+        tr.innerHTML = `<td colspan="2">Day total ${target ? "vs target" : ""}</td>${cell(totals.kcal, target?.kcal)}${cell(totals.protein_g, target?.protein_g)}${cell(totals.fat_g, target?.fat_g)}${cell(totals.carb_g, target?.carb_g)}<td colspan="4"></td>`;
         tf.appendChild(tr);
       }
 

@@ -105,11 +105,13 @@ describe("planning loop", () => {
     const build = await (await req("/api/days/0/build", { method: "POST" })).json<{ items: number }>();
     expect(build.items).toBe(2);
 
-    // optimize (generous tolerance)
+    // optimize (generous calorie band). Calories land in range; protein is
+    // maximized (may exceed the old "target"), fat minimized.
     const opt = await (await req("/api/days/0/optimize?epsilon=0.15", { method: "POST" })).json<{ status: string; macros: { kcal: number; protein_g: number } }>();
     expect(opt.status).toBe("optimal");
-    expect(opt.macros.protein_g).toBeGreaterThan(66 * 0.85);
-    expect(opt.macros.protein_g).toBeLessThan(66 * 1.15 + 1);
+    expect(opt.macros.kcal).toBeGreaterThanOrEqual(525 * 0.85 - 1);
+    expect(opt.macros.kcal).toBeLessThanOrEqual(525 * 1.15 + 1);
+    expect(opt.macros.protein_g).toBeGreaterThan(0);
 
     // day reflects persisted grams
     const day = await (await req("/api/days/0")).json<{ items: { grams: number }[]; totals: { kcal: number } }>();
