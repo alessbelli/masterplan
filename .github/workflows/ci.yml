@@ -48,5 +48,17 @@ jobs:
             e2e/playwright-report/**
           if-no-files-found: ignore
 
-# Deploys are intentionally MANUAL (run `pnpm deploy` locally). No auto-deploy on
-# merge — CI only verifies. See docs/planning/status.md for the deploy commands.
+# Deployment is NOT done here.
+#
+# masterplan is deployed by **Workers Builds** — the Cloudflare GitHub app —
+# which builds and deploys straight from the repo, reading wrangler.jsonc:
+#   * push to `main`     -> production deploy (`wrangler deploy`)
+#   * push to any branch -> preview version   (`wrangler versions upload`)
+#
+# The build command must include `pnpm build:client` (esbuild bundles the client
+# into public/) before wrangler deploy. That keeps CLOUDFLARE_API_TOKEN out of
+# GitHub Actions entirely.
+#
+# What protects production is BRANCH PROTECTION on `main` (require `verify` + a
+# review) — Workers Builds does not wait for this run.
+# Settings + rationale: docs/deployment.md. See product-builder/guidance/12.
