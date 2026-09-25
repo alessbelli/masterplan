@@ -5,7 +5,9 @@ the `MasterPlan3.1.xlsm` workbook. Build a week of meals from a food/recipe
 catalog, let the optimizer tune ingredient grams to hit your macro targets, and
 roll it up into a shopping list.
 
-**Live PoC:** https://masterplan.aless-jeant.workers.dev
+**Live PoC:** https://masterplan.aless-jeant.workers.dev — deployed automatically
+by **Workers Builds** (the Cloudflare GitHub app) on merge to `main`; see
+[`docs/deployment.md`](docs/deployment.md).
 
 > Built with the [`product-builder`](https://github.com/alessbelli/product-builder)
 > playbook, kept deliberately light: single package, no market/competitive
